@@ -42,7 +42,7 @@
       },
       "brave-core": {
         "dir": "src/brave",
-        "branch": "enable_widevine_cdm_host_verification",
+        "branch": "master",
         "repository": {
           "url": "https://github.com/brave/brave-core.git"
         }
