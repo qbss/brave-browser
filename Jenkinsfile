@@ -96,14 +96,16 @@ pipeline {
                         SKIP = true
                         stopCurrentBuild()
                     }
-                    for (build in getBuilds()) {
-                        if (build.isBuilding() && build.getNumber() < env.BUILD_NUMBER.toInteger()) {
-                            echo "Aborting older running build " + build
-                            build.doStop()
-                            // build.finish(hudson.model.Result.ABORTED, new java.io.IOException("Aborting build"))
+                    if (!SKIP) {
+                        for (build in getBuilds()) {
+                            if (build.isBuilding() && build.getNumber() < env.BUILD_NUMBER.toInteger()) {
+                                echo "Aborting older running build " + build
+                                build.doStop()
+                                // build.finish(hudson.model.Result.ABORTED, new java.io.IOException("Aborting build"))
+                            }
                         }
+                        sleep(time: 1, unit: "MINUTES")
                     }
-                    sleep(time: 1, unit: "MINUTES")
                 }
             }
         }
