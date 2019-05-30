@@ -464,20 +464,20 @@ pipeline {
                                 }
                             }
                         }
-                        stage("audit-deps") {
-                            steps {
-                                timeout(time: 2, unit: "MINUTES") {
-                                    script {
-                                        try {
-                                            sh "npm run audit_deps"
-                                        }
-                                        catch (ex) {
-                                            currentBuild.result = "UNSTABLE"
-                                        }
-                                    }
-                                }
-                            }
-                        }
+                        // stage("audit-deps") {
+                        //     steps {
+                        //         timeout(time: 2, unit: "MINUTES") {
+                        //             script {
+                        //                 try {
+                        //                     sh "npm run audit_deps"
+                        //                 }
+                        //                 catch (ex) {
+                        //                     currentBuild.result = "UNSTABLE"
+                        //                 }
+                        //             }
+                        //         }
+                        //     }
+                        // }
                         stage("sccache") {
                             when {
                                 allOf {
@@ -553,8 +553,8 @@ pipeline {
                             steps {
                                 sh """
                                     set -e
-                                    SIGNING_ID=`security find-identity -v -p codesigning|grep "Developer ID Application"|head -n 1|awk '{print \$2}'|tr -d '\n'`
-                                    INSTALLER_SIGNING_ID=`security find-identity -v|grep "Developer ID Installer"|head -n 1|awk '{print \$2}'|tr -d '\n'`
+                                    export SIGNING_ID=`security find-identity -v -p codesigning|grep "Developer ID Application"|head -n 1|awk '{print \$2}'|tr -d '\n'`
+                                    export INSTALLER_SIGNING_ID=`security find-identity -v|grep "Developer ID Installer"|head -n 1|awk '{print \$2}'|tr -d '\n'`
                                     echo $SIGNING_ID
                                     echo $INSTALLER_SIGNING_ID
                                     security unlock-keychain -p "${KEYCHAIN_PASS}" "${KEYCHAIN_PATH}"
