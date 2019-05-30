@@ -490,21 +490,21 @@ pipeline {
                                 sh "npm config --userconfig=.npmrc set sccache sccache"
                             }
                         }
-                        stage("build") {
-                            steps {
-                                sh """
-                                    set -e
-                                    npm config --userconfig=.npmrc set brave_referrals_api_key ${REFERRAL_API_KEY}
-                                    npm config --userconfig=.npmrc set brave_google_api_endpoint https://location.services.mozilla.com/v1/geolocate?key=
-                                    npm config --userconfig=.npmrc set brave_google_api_key ${BRAVE_GOOGLE_API_KEY}
-                                    npm config --userconfig=.npmrc set google_api_endpoint safebrowsing.brave.com
-                                    npm config --userconfig=.npmrc set google_api_key dummytoken
-                                    mkdir -p src/third_party/widevine/scripts/
-                                    cp ${HOME}/signature_generator.py src/third_party/widevine/scripts/
-                                    npm run build -- ${BUILD_TYPE} --channel=${CHANNEL} --official_build=true
-                                """
-                            }
-                        }
+                        // stage("build") {
+                        //     steps {
+                        //         sh """
+                        //             set -e
+                        //             npm config --userconfig=.npmrc set brave_referrals_api_key ${REFERRAL_API_KEY}
+                        //             npm config --userconfig=.npmrc set brave_google_api_endpoint https://location.services.mozilla.com/v1/geolocate?key=
+                        //             npm config --userconfig=.npmrc set brave_google_api_key ${BRAVE_GOOGLE_API_KEY}
+                        //             npm config --userconfig=.npmrc set google_api_endpoint safebrowsing.brave.com
+                        //             npm config --userconfig=.npmrc set google_api_key dummytoken
+                        //             mkdir -p src/third_party/widevine/scripts/
+                        //             cp ${HOME}/signature_generator.py src/third_party/widevine/scripts/
+                        //             npm run build -- ${BUILD_TYPE} --channel=${CHANNEL} --official_build=true
+                        //         """
+                        //     }
+                        // }
                         // stage("audit-network") {
                         //     steps {
                         //         timeout(time: 4, unit: "MINUTES") {
@@ -553,8 +553,8 @@ pipeline {
                             steps {
                                 sh """
                                     set -e
-                                    SIGNING_ID=\$(security find-identity -v -p codesigning|grep "Developer ID Application"|head -n 1|awk '{print \$2}'|tr -d '\n')
-                                    INSTALLER_SIGNING_ID=\$(security find-identity -v|grep "Developer ID Installer"|head -n 1|awk '{print \$2}'|tr -d '\n')
+                                    SIGNING_ID=`security find-identity -v -p codesigning|grep "Developer ID Application"|head -n 1|awk '{print \$2}'|tr -d '\n'`
+                                    INSTALLER_SIGNING_ID=`security find-identity -v|grep "Developer ID Installer"|head -n 1|awk '{print \$2}'|tr -d '\n'`
                                     echo $SIGNING_ID
                                     echo $INSTALLER_SIGNING_ID
                                     security unlock-keychain -p "${KEYCHAIN_PASS}" "${KEYCHAIN_PATH}"
