@@ -555,6 +555,8 @@ pipeline {
                                     set -e
                                     SIGNING_ID=\$(security find-identity -v -p codesigning|grep "Developer ID Application"|head -n 1|awk '{print \$2}'|tr -d '\n')
                                     INSTALLER_SIGNING_ID=\$(security find-identity -v|grep "Developer ID Installer"|head -n 1|awk '{print \$2}'|tr -d '\n')
+                                    echo $SIGNING_ID
+                                    echo $INSTALLER_SIGNING_ID
                                     security unlock-keychain -p "${KEYCHAIN_PASS}" "${KEYCHAIN_PATH}"
                                     npm run create_dist -- ${BUILD_TYPE} --channel=${CHANNEL} --official_build=true --mac_signing_keychain=${KEYCHAIN} --mac_signing_identifier=${SIGNING_ID} --mac_installer_signing_identifier=${INSTALLER_SIGNING_ID}
                                     security lock-keychain -a
