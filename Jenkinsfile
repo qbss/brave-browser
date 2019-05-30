@@ -90,7 +90,7 @@ pipeline {
                     }
                     def bc_version = readJSON(text: httpRequest(url: "https://raw.githubusercontent.com/brave/brave-core/" + bc_branch + "/package.json", quiet: !DEBUG).content).version
                     if (bb_version != bc_version) {
-                        echo "Version mismatch between brave-browser (" + bb_version + ") and brave-core (" + bc_version + ") in package.json"
+                        echo "Version mismatch between brave-browser (" + BRANCH + "/" + bb_version + ") and brave-core (" + bc_branch + "/" + bc_version + ") in package.json"
                         SKIP = true
                         stopCurrentBuild()
                     }
