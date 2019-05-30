@@ -86,7 +86,7 @@ pipeline {
                     def bb_version = bb_package_json.version
                     def bc_branch = bb_package_json.config.projects["brave-core"].branch
                     if (BRANCH_EXISTS_IN_BC) {
-                        bc_branch = bb_branch
+                        bc_branch = BRANCH
                     }
                     def bc_version = readJSON(text: httpRequest(url: "https://raw.githubusercontent.com/brave/brave-core/" + bc_branch + "/package.json", quiet: !DEBUG).content).version
                     if (bb_version != bc_version) {
