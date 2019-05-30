@@ -58,6 +58,8 @@ pipeline {
                             env.BC_PR_NUMBER = bcPrDetails.number
                         }
                     }
+                    RUST_LOG = "warn"
+                    SCCACHE_ERROR_LOG  = "sccache.log"
                 }
             }
         }
