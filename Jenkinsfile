@@ -7,10 +7,11 @@ pipeline {
     }
     parameters {
         choice(name: "CHANNEL", choices: ["nightly", "dev", "beta", "release"], description: "")
+        choice(name: "BUILD_TYPE", choices: ["Release", "Debug"], description: "")
         booleanParam(name: "WIPE_WORKSPACE", defaultValue: false, description: "")
-        booleanParam(name: "RUN_INIT", defaultValue: false, description: "")
+        booleanParam(name: "SKIP_INIT", defaultValue: false, description: "")
         booleanParam(name: "DISABLE_SCCACHE", defaultValue: false, description: "")
-        // TODO: add SKIP_SIGNING
+        booleanParam(name: "SKIP_SIGNING", defaultValue: false, description: "")
         booleanParam(name: "DEBUG", defaultValue: false, description: "")
     }
     environment {
@@ -26,17 +27,20 @@ pipeline {
                 script {
                     CHANNEL = params.CHANNEL
                     CHANNEL_CAPITALIZED = CHANNEL.capitalize()
+                    BUILD_TYPE = params.BUILD_TYPE
                     WIPE_WORKSPACE = params.WIPE_WORKSPACE
-                    RUN_INIT = params.RUN_INIT
+                    SKIP_INIT = params.SKIP_INIT
                     DISABLE_SCCACHE = params.DISABLE_SCCACHE
+                    SKIP_SIGNING = params.SKIP_SIGNING ? "--skip_signing" : ""
                     DEBUG = params.DEBUG
-                    BUILD_TYPE = "Release"
+                    RELEASE_TYPE = env.JOB_NAME.equals("brave-browser-build") ? "release" : "ci"
+                    RUST_LOG = "sccache=warn"
                     OUT_DIR = "src/out/" + BUILD_TYPE
                     LINT_BRANCH = "TEMP_LINT_BRANCH_" + BUILD_NUMBER
-                    RELEASE_TYPE = (env.JOB_NAME.equals("brave-browser-build") ? "release" : "ci")
                     BRAVE_GITHUB_TOKEN = "brave-browser-releases-github"
                     GITHUB_API = "https://api.github.com/repos/brave"
                     GITHUB_CREDENTIAL_ID = "brave-builds-github-token-for-pr-builder"
+                    SKIP = false
                     BRANCH = env.BRANCH_NAME
                     TARGET_BRANCH = "master"
                     if (env.CHANGE_BRANCH) {
@@ -44,7 +48,7 @@ pipeline {
                         TARGET_BRANCH = env.CHANGE_TARGET
                         def prNumber = readJSON(text: httpRequest(url: GITHUB_API + "/brave-browser/pulls?head=brave:" + BRANCH, authentication: GITHUB_CREDENTIAL_ID, quiet: !DEBUG).content)[0].number
                         def prDetails = readJSON(text: httpRequest(url: GITHUB_API + "/brave-browser/pulls/" + prNumber, authentication: GITHUB_CREDENTIAL_ID, quiet: !DEBUG).content)
-                        env.SKIP = prDetails.mergeable_state.equals("draft") or prDetails.labels.count { label -> label.name.equals("CI/Skip") }.equals(1)
+                        SKIP = prDetails.mergeable_state.equals("draft") or prDetails.labels.count { label -> label.name.equals("CI/Skip") }.equals(1)
                         env.SLACK_USERNAME = readJSON(text: SLACK_USERNAME_MAP)[env.CHANGE_AUTHOR]
                         if (env.SLACK_USERNAME) {
                             slackSend(color:null, channel: env.SLACK_USERNAME, message: "STARTED - ${JOB_NAME} #${BUILD_NUMBER} (<${BUILD_URL}/flowGraphTable/?auto_refresh=true|Open>)")
@@ -63,39 +67,53 @@ pipeline {
         stage("abort") {
             steps {
                 script {
-                    if (env.SKIP == true) {
-                        print "Aborting build as PR is in draft or has \"CI/Skip\" label"
+                    if (SKIP) {
+                        echo "Aborting build as PR is in draft or has \"CI/Skip\" label"
                         stopCurrentBuild()
                     }
                     else if (BRANCH_EXISTS_IN_BC) {
                         if (isStartedManually()) {
                             if (env.BC_PR_NUMBER) {
-                                print "Aborting build as PR exists in brave-core and build has not been started from there"
-                                print "Use " + env.JENKINS_URL + "view/ci/job/brave-core-build-pr/view/change-requests/job/PR-" + env.BC_PR_NUMBER + " to trigger"
+                                echo "Aborting build as PR exists in brave-core and build has not been started from there"
+                                echo "Use " + env.JENKINS_URL + "view/ci/job/brave-core-build-pr/view/change-requests/job/PR-" + env.BC_PR_NUMBER + " to trigger"
                             }
                             else {
-                                print "Aborting build as there's a matching branch in brave-core, please create a PR there first"
-                                print "Use https://github.com/brave/brave-core/compare/" + TARGET_BRANCH + "..." + BRANCH + " to create PR"
+                                echo "Aborting build as there's a matching branch in brave-core, please create a PR there first"
+                                echo "Use https://github.com/brave/brave-core/compare/" + TARGET_BRANCH + "..." + BRANCH + " to create PR"
                             }
-                            env.SKIP = true
+                            SKIP = true
                             stopCurrentBuild()
                         }
                     }
-                    for (build in getBuilds()) {
-                        if (build.isBuilding() && build.getNumber() < env.BUILD_NUMBER.toInteger()) {
-                            print "Aborting older running build " + build
-                            build.doStop()
-                            // build.finish(hudson.model.Result.ABORTED, new java.io.IOException("Aborting build"))
-                        }
+                    def bb_package_json = readJSON(text: httpRequest(url: "https://raw.githubusercontent.com/brave/brave-browser/" + BRANCH + "/package.json", quiet: !DEBUG).content)
+                    def bb_version = bb_package_json.version
+                    def bc_branch = bb_package_json.config.projects["brave-core"].branch
+                    if (BRANCH_EXISTS_IN_BC) {
+                        bc_branch = BRANCH
                     }
-                    sleep(time: 1, unit: "MINUTES")
+                    def bc_version = readJSON(text: httpRequest(url: "https://raw.githubusercontent.com/brave/brave-core/" + bc_branch + "/package.json", quiet: !DEBUG).content).version
+                    if (bb_version != bc_version) {
+                        echo "Version mismatch between brave-browser (" + BRANCH + "/" + bb_version + ") and brave-core (" + bc_branch + "/" + bc_version + ") in package.json"
+                        SKIP = true
+                        stopCurrentBuild()
+                    }
+                    if (!SKIP) {
+                        for (build in getBuilds()) {
+                            if (build.isBuilding() && build.getNumber() < env.BUILD_NUMBER.toInteger()) {
+                                echo "Aborting older running build " + build
+                                build.doStop()
+                                // build.finish(hudson.model.Result.ABORTED, new java.io.IOException("Aborting build"))
+                            }
+                        }
+                        sleep(time: 1, unit: "MINUTES")
+                    }
                 }
             }
         }
         stage("build-all") {
             when {
                 beforeAgent true
-                expression { env.SKIP != true }
+                expression { !SKIP }
             }
             parallel {
                 stage("android") {
@@ -137,15 +155,10 @@ pipeline {
                         }
                         stage("init") {
                             when {
-                                expression { return !fileExists("src/brave/package.json") || RUN_INIT }
+                                expression { return !fileExists("src/brave/package.json") || !SKIP_INIT }
                             }
                             steps {
                                 sh "npm run init -- --target_os=android"
-                            }
-                        }
-                        stage("sync") {
-                            steps {
-                                sh "npm run sync -- --all --target_os=android"
                             }
                         }
                         stage("lint") {
@@ -164,6 +177,20 @@ pipeline {
                                     }
                                     catch (ex) {
                                         currentBuild.result = "UNSTABLE"
+                                    }
+                                }
+                            }
+                        }
+                        stage("audit-deps") {
+                            steps {
+                                timeout(time: 1, unit: "MINUTES") {
+                                    script {
+                                        try {
+                                            sh "npm run audit_deps"
+                                        }
+                                        catch (ex) {
+                                            currentBuild.result = "UNSTABLE"
+                                        }
                                     }
                                 }
                             }
@@ -209,6 +236,7 @@ pipeline {
                     environment {
                         GIT_CACHE_PATH = "${HOME}/cache"
                         SCCACHE_BUCKET = credentials("brave-browser-sccache-linux-s3-bucket")
+                        SCCACHE_ERROR_LOG  = "${WORKSPACE}/sccache.log"
                     }
                     stages {
                         stage("checkout") {
@@ -243,15 +271,10 @@ pipeline {
                         }
                         stage("init") {
                             when {
-                                expression { return !fileExists("src/brave/package.json") || RUN_INIT }
+                                expression { return !fileExists("src/brave/package.json") || !SKIP_INIT }
                             }
                             steps {
                                 sh "npm run init"
-                            }
-                        }
-                        stage("sync") {
-                            steps {
-                                sh "npm run sync -- --all"
                             }
                         }
                         stage("lint") {
@@ -276,7 +299,7 @@ pipeline {
                         }
                         stage("audit-deps") {
                             steps {
-                                timeout(time: 2, unit: "MINUTES") {
+                                timeout(time: 1, unit: "MINUTES") {
                                     script {
                                         try {
                                             sh "npm run audit_deps"
@@ -379,6 +402,9 @@ pipeline {
                     environment {
                         GIT_CACHE_PATH = "${HOME}/cache"
                         SCCACHE_BUCKET = credentials("brave-browser-sccache-mac-s3-bucket")
+                        KEYCHAIN = "signing-${RELEASE_TYPE}"
+                        KEYCHAIN_PATH = "/Users/jenkins/Library/Keychains/${KEYCHAIN}.keychain-db"
+                        KEYCHAIN_PASS = credentials("mac-${RELEASE_TYPE}-keychain-password")
                     }
                     stages {
                         stage("checkout") {
@@ -414,15 +440,10 @@ pipeline {
                         }
                         stage("init") {
                             when {
-                                expression { return !fileExists("src/brave/package.json") || RUN_INIT }
+                                expression { return !fileExists("src/brave/package.json") || !SKIP_INIT }
                             }
                             steps {
                                 sh "npm run init"
-                            }
-                        }
-                        stage("sync") {
-                            steps {
-                                sh "npm run sync -- --all"
                             }
                         }
                         stage("lint") {
@@ -447,7 +468,7 @@ pipeline {
                         }
                         stage("audit-deps") {
                             steps {
-                                timeout(time: 2, unit: "MINUTES") {
+                                timeout(time: 1, unit: "MINUTES") {
                                     script {
                                         try {
                                             sh "npm run audit_deps"
@@ -530,7 +551,12 @@ pipeline {
                         }
                         stage("dist") {
                             steps {
-                                sh "npm run create_dist -- ${BUILD_TYPE} --channel=${CHANNEL} --official_build=true --skip_signing"
+                                sh """
+                                    set -e
+                                    security unlock-keychain -p "${KEYCHAIN_PASS}" "${KEYCHAIN_PATH}"
+                                    npm run create_dist -- ${BUILD_TYPE} --channel=${CHANNEL} --official_build=true ${SKIP_SIGNING} --mac_signing_keychain=${KEYCHAIN} --mac_signing_identifier=`security find-identity -v -p codesigning|grep "Developer ID Application"|head -n 1|awk '{print \$2}'|tr -d '\n'` --mac_installer_signing_identifier=`security find-identity -v|grep "Developer ID Installer"|head -n 1|awk '{print \$2}'|tr -d '\n'`
+                                    security lock-keychain -a
+                                """
                             }
                         }
                         stage("archive") {
@@ -599,25 +625,18 @@ pipeline {
                                     \$ErrorActionPreference = "Stop"
                                     npm install --no-optional
                                     Remove-Item -ErrorAction SilentlyContinue -Force ${GIT_CACHE_PATH}/*.lock
+                                    Import-PfxCertificate -FilePath "${KEY_PFX_PATH}" -CertStoreLocation "Cert:\\LocalMachine\\My" -Password (ConvertTo-SecureString -String "${AUTHENTICODE_PASSWORD_UNESCAPED}" -AsPlaintext -Force)
                                 """
                             }
                         }
                         stage("init") {
                             when {
-                                expression { return !fileExists("src/brave/package.json") || RUN_INIT }
+                                expression { return !fileExists("src/brave/package.json") || !SKIP_INIT }
                             }
                             steps {
                                 powershell """
                                     \$ErrorActionPreference = "Stop"
                                     npm run init
-                                """
-                            }
-                        }
-                        stage("sync") {
-                            steps {
-                                powershell """
-                                    \$ErrorActionPreference = "Stop"
-                                    npm run sync -- --all
                                 """
                             }
                         }
@@ -643,7 +662,7 @@ pipeline {
                         }
                         stage("audit-deps") {
                             steps {
-                                timeout(time: 2, unit: "MINUTES") {
+                                timeout(time: 1, unit: "MINUTES") {
                                     script {
                                         try {
                                             powershell """
@@ -709,10 +728,9 @@ pipeline {
                             steps {
                                 powershell """
                                     \$ErrorActionPreference = "Stop"
-                                    Import-PfxCertificate -FilePath "${KEY_PFX_PATH}" -CertStoreLocation "Cert:\\LocalMachine\\My" -Password (ConvertTo-SecureString -String "${AUTHENTICODE_PASSWORD_UNESCAPED}" -AsPlaintext -Force)
-                                    npm run create_dist -- ${BUILD_TYPE} --channel=${CHANNEL} --official_build=true --skip_signing
+                                    npm run create_dist -- ${BUILD_TYPE} --channel=${CHANNEL} --official_build=true ${SKIP_SIGNING}
                                     (Get-Content src/brave/vendor/omaha/omaha/hammer-brave.bat) | % { \$_ -replace "10.0.15063.0\\\\", "" } | Set-Content src/brave/vendor/omaha/omaha/hammer-brave.bat
-                                    npm run create_dist -- ${BUILD_TYPE} --channel=${CHANNEL} --build_omaha --tag_ap=x64-${CHANNEL} --target_arch=x64 --official_build=true --skip_signing
+                                    npm run create_dist -- ${BUILD_TYPE} --channel=${CHANNEL} --official_build=true ${SKIP_SIGNING} --build_omaha --tag_ap=x64-${CHANNEL} --target_arch=x64
                                 """
                             }
                         }
