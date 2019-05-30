@@ -444,26 +444,26 @@ pipeline {
                                 sh "npm run sync -- --all"
                             }
                         }
-                        stage("lint") {
-                            steps {
-                                script {
-                                    try {
-                                        sh """
-                                            set -e
-                                            git -C src/brave config user.name brave-builds
-                                            git -C src/brave config user.email devops@brave.com
-                                            git -C src/brave checkout -b ${LINT_BRANCH}
-                                            npm run lint -- --base=origin/${TARGET_BRANCH}
-                                            git -C src/brave checkout -q -
-                                            git -C src/brave branch -D ${LINT_BRANCH}
-                                        """
-                                    }
-                                    catch (ex) {
-                                        currentBuild.result = "UNSTABLE"
-                                    }
-                                }
-                            }
-                        }
+                        // stage("lint") {
+                        //     steps {
+                        //         script {
+                        //             try {
+                        //                 sh """
+                        //                     set -e
+                        //                     git -C src/brave config user.name brave-builds
+                        //                     git -C src/brave config user.email devops@brave.com
+                        //                     git -C src/brave checkout -b ${LINT_BRANCH}
+                        //                     npm run lint -- --base=origin/${TARGET_BRANCH}
+                        //                     git -C src/brave checkout -q -
+                        //                     git -C src/brave branch -D ${LINT_BRANCH}
+                        //                 """
+                        //             }
+                        //             catch (ex) {
+                        //                 currentBuild.result = "UNSTABLE"
+                        //             }
+                        //         }
+                        //     }
+                        // }
                         // stage("audit-deps") {
                         //     steps {
                         //         timeout(time: 1, unit: "MINUTES") {
@@ -490,21 +490,21 @@ pipeline {
                                 sh "npm config --userconfig=.npmrc set sccache sccache"
                             }
                         }
-                        // stage("build") {
-                        //     steps {
-                        //         sh """
-                        //             set -e
-                        //             npm config --userconfig=.npmrc set brave_referrals_api_key ${REFERRAL_API_KEY}
-                        //             npm config --userconfig=.npmrc set brave_google_api_endpoint https://location.services.mozilla.com/v1/geolocate?key=
-                        //             npm config --userconfig=.npmrc set brave_google_api_key ${BRAVE_GOOGLE_API_KEY}
-                        //             npm config --userconfig=.npmrc set google_api_endpoint safebrowsing.brave.com
-                        //             npm config --userconfig=.npmrc set google_api_key dummytoken
-                        //             mkdir -p src/third_party/widevine/scripts/
-                        //             cp ${HOME}/signature_generator.py src/third_party/widevine/scripts/
-                        //             npm run build -- ${BUILD_TYPE} --channel=${CHANNEL} --official_build=true
-                        //         """
-                        //     }
-                        // }
+                        stage("build") {
+                            steps {
+                                sh """
+                                    set -e
+                                    npm config --userconfig=.npmrc set brave_referrals_api_key ${REFERRAL_API_KEY}
+                                    npm config --userconfig=.npmrc set brave_google_api_endpoint https://location.services.mozilla.com/v1/geolocate?key=
+                                    npm config --userconfig=.npmrc set brave_google_api_key ${BRAVE_GOOGLE_API_KEY}
+                                    npm config --userconfig=.npmrc set google_api_endpoint safebrowsing.brave.com
+                                    npm config --userconfig=.npmrc set google_api_key dummytoken
+                                    mkdir -p src/third_party/widevine/scripts/
+                                    cp ${HOME}/signature_generator.py src/third_party/widevine/scripts/
+                                    npm run build -- ${BUILD_TYPE} --channel=${CHANNEL} --official_build=true
+                                """
+                            }
+                        }
                         // stage("audit-network") {
                         //     steps {
                         //         timeout(time: 4, unit: "MINUTES") {
